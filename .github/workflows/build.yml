@@ -11,6 +11,10 @@ jobs:
   build:
     runs-on: ubuntu-latest
 
+    env:
+      ANDROID_SDK_ROOT: ${{ github.workspace }}/android-sdk
+      ANDROID_HOME: ${{ github.workspace }}/android-sdk
+
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
@@ -39,57 +43,51 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Install Android SDK command line tools
-        env:
-          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
         run: |
-          SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
-          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
-          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
-          mkdir -p "$SDK_ROOT/cmdline-tools"
+          set -euo pipefail
+          mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools"
 
-          if [ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+          if [ ! -x "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
             wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
-            rm -rf "$SDK_ROOT/cmdline-tools/latest"
-            mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+            rm -rf "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            mkdir -p "$ANDROID_SDK_ROOT/cmdline-tools/latest"
+            rm -rf /tmp/cmdline-tools
             unzip -q /tmp/cmdline-tools.zip -d /tmp
-            mv /tmp/cmdline-tools/* "$SDK_ROOT/cmdline-tools/latest/"
+            mv /tmp/cmdline-tools/* "$ANDROID_SDK_ROOT/cmdline-tools/latest/"
           fi
 
-          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
-          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
+          echo "$ANDROID_SDK_ROOT/build-tools/33.0.2" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses (if sdkmanager exists)
         run: |
+          set -e
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
           if command -v sdkmanager >/dev/null 2>&1; then
-            yes | sdkmanager --licenses || true
-            sdkmanager "platform-tools" "platforms;android-33" "build-tools;33.0.2" || true
+            yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null 2>&1 || true
+            sdkmanager --sdk_root="$ANDROID_SDK_ROOT" \
+              "platform-tools" "platforms;android-33" "build-tools;33.0.2" || true
           else
             echo "sdkmanager not available; continuing without explicit license acceptance"
           fi
 
       - name: Install Android SDK packages (required)
         run: |
-          set -e
-          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
-          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          set -euo pipefail
           export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
 
-          # Accept licenses while preventing broken-pipe failures from the `yes` command.
-          set +o pipefail
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null
-          set -o pipefail
+          # Accept licenses safely; tolerate SIGPIPE from `yes` when sdkmanager finishes reading input.
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null 2>&1 || true
 
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
 
-          # Final license pass for idempotency; tolerate SIGPIPE from `yes` after sdkmanager exits.
-          set +o pipefail
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null
-          set -o pipefail
+          # Final idempotent license pass.
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses >/dev/null 2>&1 || true
 
-          echo "$ANDROID_SDK_ROOT/build-tools/33.0.2" >> "$GITHUB_PATH"
           command -v sdkmanager
           command -v aidl
 
