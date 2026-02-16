@@ -32,10 +32,31 @@ jobs:
           sudo apt-get install -y \
             python3-pip \
             openjdk-17-jdk \
-            unzip
+            unzip \
+            wget
 
       - name: Set up Android SDK
         uses: android-actions/setup-android@v3
+
+      - name: Install Android SDK command line tools
+        env:
+          ANDROID_SDK_ROOT: ${{ env.ANDROID_SDK_ROOT }}
+        run: |
+          SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
+          echo "ANDROID_SDK_ROOT=$SDK_ROOT" >> "$GITHUB_ENV"
+          echo "ANDROID_HOME=$SDK_ROOT" >> "$GITHUB_ENV"
+          mkdir -p "$SDK_ROOT/cmdline-tools"
+
+          if [ ! -x "$SDK_ROOT/cmdline-tools/latest/bin/sdkmanager" ]; then
+            wget -q https://dl.google.com/android/repository/commandlinetools-linux-11076708_latest.zip -O /tmp/cmdline-tools.zip
+            rm -rf "$SDK_ROOT/cmdline-tools/latest"
+            mkdir -p "$SDK_ROOT/cmdline-tools/latest"
+            unzip -q /tmp/cmdline-tools.zip -d /tmp
+            mv /tmp/cmdline-tools/* "$SDK_ROOT/cmdline-tools/latest/"
+          fi
+
+          echo "$SDK_ROOT/cmdline-tools/latest/bin" >> "$GITHUB_PATH"
+          echo "$SDK_ROOT/platform-tools" >> "$GITHUB_PATH"
 
       - name: Accept Android SDK licenses (if sdkmanager exists)
         run: |
@@ -46,10 +67,21 @@ jobs:
             echo "sdkmanager not available; continuing without explicit license acceptance"
           fi
 
+      - name: Install Android SDK packages (required)
+        run: |
+          sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install \
+            "platform-tools" \
+            "platforms;android-33" \
+            "build-tools;33.0.2"
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
+          echo "$ANDROID_SDK_ROOT/build-tools/33.0.2" >> "$GITHUB_PATH"
+          command -v sdkmanager
+          command -v aidl
+
       - name: Install Python dependencies
         run: |
           python -m pip install --upgrade pip
-          pip install buildozer cython==0.29.36
+          pip install cython==0.29.36 buildozer
 
       - name: Build APK with Buildozer
         run: |
