@@ -69,11 +69,26 @@ jobs:
 
       - name: Install Android SDK packages (required)
         run: |
+          set -e
+          export ANDROID_SDK_ROOT="${ANDROID_SDK_ROOT:-$HOME/android-sdk}"
+          export ANDROID_HOME="$ANDROID_SDK_ROOT"
+          export PATH="$ANDROID_SDK_ROOT/cmdline-tools/latest/bin:$ANDROID_SDK_ROOT/platform-tools:$PATH"
+
+          # Accept licenses while preventing broken-pipe failures from the `yes` command.
+          set +o pipefail
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null
+          set -o pipefail
+
           sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --install \
             "platform-tools" \
             "platforms;android-33" \
             "build-tools;33.0.2"
-          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses
+
+          # Final license pass for idempotency; tolerate SIGPIPE from `yes` after sdkmanager exits.
+          set +o pipefail
+          yes | sdkmanager --sdk_root="$ANDROID_SDK_ROOT" --licenses > /dev/null
+          set -o pipefail
+
           echo "$ANDROID_SDK_ROOT/build-tools/33.0.2" >> "$GITHUB_PATH"
           command -v sdkmanager
           command -v aidl
