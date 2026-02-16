@@ -16,9 +16,6 @@ jobs:
           sudo apt install -y python3-pip
           pip install buildozer cython==0.29.36
 
-      - name: Accept Android Licenses
-        run: yes | sdkmanager --licenses
-
       - name: Build APK
         run: |
           buildozer init
